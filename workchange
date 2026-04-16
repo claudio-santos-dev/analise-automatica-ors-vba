@@ -1,0 +1,42 @@
+VERSION 1.0 CLASS
+BEGIN
+  MultiUse = -1  'True
+END
+Attribute VB_Name = "Plan1"
+Attribute VB_GlobalNameSpace = False
+Attribute VB_Creatable = False
+Attribute VB_PredeclaredId = True
+Attribute VB_Exposed = True
+Private Sub Worksheet_Change(ByVal Target As Range)
+
+    On Error GoTo Fim
+
+    If Target.CountLarge > 1000 Then Exit Sub
+
+    If Intersect(Target, Me.Columns("X")) Is Nothing Then Exit Sub
+
+    Application.EnableEvents = False
+    Application.ScreenUpdating = False
+
+    Dim cel As Range
+
+    For Each cel In Target
+
+        If cel.Row > 1 Then
+
+            If Trim(cel.Value) <> "" Then
+                AtualizarSetor Me, cel.Row
+            Else
+                Me.Cells(cel.Row, "Y").ClearContents
+                Me.Cells(cel.Row, "AA").ClearContents
+            End If
+
+        End If
+
+    Next cel
+
+Fim:
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+
+End Sub
