@@ -1,0 +1,256 @@
+Attribute VB_Name = "M�dulo1"
+Option Explicit
+
+'--------------------------------
+' MACRO PRINCIPAL
+'--------------------------------
+Public Sub ProcessarRelatorio()
+    
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+    Application.Calculation = xlCalculationManual
+
+    Dim ws As Worksheet, wsHist As Worksheet
+    Dim dictHist As Object
+    Dim ultimaLinha As Long, i As Long
+    Dim chave As String
+
+    Set ws = ActiveSheet
+    Set dictHist = CreateObject("Scripting.Dictionary")
+
+    '--------------------------------
+    ' HIST�RICO
+    '--------------------------------
+    On Error Resume Next
+    Set wsHist = ThisWorkbook.Sheets("Base Ontem")
+    On Error GoTo 0
+
+    If Not wsHist Is Nothing Then
+        Dim ultH As Long
+        ultH = wsHist.Cells(wsHist.Rows.Count, "B").End(xlUp).Row
+
+        For i = 2 To ultH
+            chave = Trim(wsHist.Cells(i, "B").Value)
+            If chave <> "" Then
+                dictHist(chave) = wsHist.Cells(i, "X").Value
+            End If
+        Next i
+    End If
+
+    ultimaLinha = ws.Cells(ws.Rows.Count, "B").End(xlUp).Row
+
+    '--------------------------------
+    ' LOOP PRINCIPAL
+    '--------------------------------
+    For i = 2 To ultimaLinha
+
+        Dim valW As String, valX As String
+        Dim dataMapa As Variant
+        Dim statusAntigo As String
+
+        chave = Trim(ws.Cells(i, "B").Value)
+
+        valW = Normalize(ws.Cells(i, "W").Value)
+        valX = Normalize(ws.Cells(i, "X").Value)
+        dataMapa = ws.Cells(i, "K").Value
+
+        ' HIST�RICO
+        If dictHist.Exists(chave) Then
+            statusAntigo = dictHist(chave)
+            If statusAntigo <> "" Then
+                ws.Cells(i, "X").Value = statusAntigo
+            End If
+        End If
+
+        valX = Normalize(ws.Cells(i, "X").Value)
+
+        '--------------------------------
+        ' REGRA 1 (NF ? FINALIZAR OR)
+        '--------------------------------
+        If (InStr(valX, "solicitar nf") > 0 _
+        Or InStr(valX, "nf solicitada") > 0 _
+        Or InStr(valX, "digitar nf") > 0 _
+        Or InStr(valX, "nf de entrada") > 0) _
+        And ws.Cells(i, "C").Value <> "" Then
+
+            ws.Cells(i, "X").Value = "Finalizar OR"
+
+        End If
+
+        valX = Normalize(ws.Cells(i, "X").Value)
+
+        '--------------------------------
+        ' REGRA ABSOLUTA (W MANDA) - CORRIGIDA
+        '--------------------------------
+        If InStr(valW, "processada") > 0 _
+        Or InStr(valW, "conferencia concluida") > 0 Then
+
+            If Not IsDate(dataMapa) Then dataMapa = Date
+
+            ws.Cells(i, "X").Value = "Aguardando Aloca��o - Liberada dia " & Format(dataMapa, "dd/mm")
+
+        Else
+
+            If valX = "" Or InStr(valX, "aguardando conferencia") > 0 Then
+
+                If InStr(valW, "andamento") > 0 Then
+
+                    If ws.Cells(i, "C").Value <> "" Then
+                        ws.Cells(i, "X").Value = "Solicitar Autoriza��o"
+                    Else
+                        ws.Cells(i, "X").Value = "Solicitar NF - Analisar"
+                    End If
+
+                ElseIf InStr(valW, "pendente") > 0 Then
+
+                    ws.Cells(i, "X").Value = "Aguardando Confer�ncia"
+
+                End If
+
+            End If
+
+        End If
+
+        '--------------------------------
+        ' TOTAL REJEI��O
+        '--------------------------------
+        If InStr(1, ws.Cells(i, "G").Value, "Total(Rejei��o)", vbTextCompare) > 0 Then
+            ws.Cells(i, "Z").Value = "Total Rejei��o"
+        End If
+
+        '--------------------------------
+        ' CASCATA
+        '--------------------------------
+        AtualizarSetor ws, i
+
+        '--------------------------------
+        ' DIAS
+        '--------------------------------
+        Dim dias As Variant
+        dias = CalcularDias(ws.Cells(i, "X").Value, ws.Cells(i, "Y").Value)
+
+        If Not IsEmpty(dias) Then
+            ws.Cells(i, "Z").Value = dias
+        End If
+
+    Next i
+
+Fim:
+
+    Application.Calculation = xlCalculationAutomatic
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+
+End Sub
+
+'--------------------------------
+' CASCATA
+'--------------------------------
+Public Sub AtualizarSetor(ws As Worksheet, i As Long)
+
+    Dim valX As String
+    valX = Normalize(ws.Cells(i, "X").Value)
+
+    If InStr(valX, "solicitar nf") > 0 _
+    Or InStr(valX, "solicitar autorizacao") > 0 Then
+        ws.Cells(i, "Y").Value = "Relacionamento"
+        ws.Cells(i, "AA").Value = "Luft"
+        Exit Sub
+    End If
+
+    If InStr(valX, "digitar nf") > 0 _
+    Or InStr(valX, "vincular nf") > 0 Then
+        ws.Cells(i, "Y").Value = "Tr�fego"
+        ws.Cells(i, "AA").Value = "Luft"
+        Exit Sub
+    End If
+
+    If InStr(valX, "conferencia") > 0 _
+    Or InStr(valX, "divergencia") > 0 _
+    Or InStr(valX, "finalizar or") > 0 Then
+        ws.Cells(i, "Y").Value = "Recebimento"
+        ws.Cells(i, "AA").Value = "Luft"
+        Exit Sub
+    End If
+
+    If InStr(valX, "alocacao") > 0 Then
+        ws.Cells(i, "Y").Value = "Guarda/Estoque"
+        ws.Cells(i, "AA").Value = "Luft"
+        Exit Sub
+    End If
+
+    If InStr(valX, "xml") > 0 _
+    Or InStr(valX, "cadastro") > 0 _
+    Or InStr(valX, "autorizacao") > 0 _
+    Or InStr(valX, "nf") > 0 Then
+        ws.Cells(i, "Y").Value = "Editora"
+        ws.Cells(i, "AA").Value = "Editora"
+        Exit Sub
+    End If
+
+End Sub
+
+'--------------------------------
+' NORMALIZE
+'--------------------------------
+Public Function Normalize(txt As String) As String
+
+    txt = CStr(txt)
+    txt = Replace(txt, Chr(160), " ")
+    txt = LCase(Trim(txt))
+
+    Do While InStr(txt, "  ") > 0
+        txt = Replace(txt, "  ", " ")
+    Loop
+
+    txt = Replace(txt, "�", "a")
+    txt = Replace(txt, "�", "a")
+    txt = Replace(txt, "�", "a")
+    txt = Replace(txt, "�", "e")
+    txt = Replace(txt, "�", "e")
+    txt = Replace(txt, "�", "i")
+    txt = Replace(txt, "�", "o")
+    txt = Replace(txt, "�", "o")
+    txt = Replace(txt, "�", "o")
+    txt = Replace(txt, "�", "u")
+    txt = Replace(txt, "�", "c")
+
+    Normalize = txt
+
+End Function
+
+'--------------------------------
+' DIAS
+'--------------------------------
+Private Function CalcularDias(statusTexto As String, setor As String) As Variant
+
+    Dim txt As String
+    txt = Normalize(statusTexto)
+
+    If Normalize(setor) <> "editora" Then Exit Function
+
+    Dim pos As Long
+    pos = InStr(txt, "dia ")
+
+    If pos = 0 Then Exit Function
+
+    Dim dataTxt As String
+    dataTxt = Mid(txt, pos + 4, 5)
+
+    If Len(dataTxt) <> 5 Then Exit Function
+
+    Dim dia As Integer, mes As Integer
+
+    On Error Resume Next
+    dia = CInt(Left(dataTxt, 2))
+    mes = CInt(Right(dataTxt, 2))
+
+    If dia = 0 Or mes = 0 Then Exit Function
+
+    Dim dataNeg As Date
+    dataNeg = DateSerial(Year(Date), mes, dia)
+
+    CalcularDias = Date - dataNeg
+
+End Function
+
